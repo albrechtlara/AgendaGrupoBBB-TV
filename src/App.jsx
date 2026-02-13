@@ -12,10 +12,10 @@ import {
   Timestamp, 
   doc, 
   setDoc,
-  getDocs
+  deleteDoc
 } from 'firebase/firestore';
 import { 
-  Search, Instagram, Plus, X, Lock, Unlock, Edit3, ExternalLink, Upload, User, Image as ImageIcon, Check
+  Search, Instagram, Plus, X, Lock, Unlock, Edit3, ExternalLink, Upload, User, Trash2
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
@@ -55,6 +55,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [photoType, setPhotoType] = useState('upload');
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const [newPart, setNewPart] = useState({ 
     nome: '', 
@@ -79,16 +80,7 @@ export default function App() {
     if (!user) return;
     const col = collection(db, 'participantes');
     const unsubscribe = onSnapshot(col, (snap) => {
-      const uniqueData = [];
-      const seenIds = new Set();
-      
-      snap.docs.forEach(d => {
-        if (!seenIds.has(d.id)) {
-          uniqueData.push({ id: d.id, ...d.data() });
-          seenIds.add(d.id);
-        }
-      });
-
+      const uniqueData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setDbParticipants(uniqueData);
       setIsLoading(false);
     }, (error) => {
@@ -139,7 +131,6 @@ export default function App() {
         const nomeMatch = (p.nome || "").toLowerCase().includes(search);
         const userMatch = (p.username || "").toLowerCase().includes(search);
         const hobbieMatch = selectedHobbie === 'Todos' || p.hobbie === selectedHobbie;
-        
         return (nomeMatch || userMatch) && hobbieMatch;
       })
       .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
@@ -170,6 +161,24 @@ export default function App() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!editingPart) return;
+    const confirm = window.confirm(`Tem a certeza que deseja excluir permanentemente o perfil de ${editingPart.nome || editingPart.username}?`);
+    if (!confirm) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'participantes', editingPart.id));
+      setShowAddModal(false);
+      setEditingPart(null);
+    } catch (err) {
+      console.error("Erro ao excluir:", err);
+      alert("Erro ao excluir participante.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const currentFoto = editingPart ? editingPart.fotoUrl : newPart.fotoUrl;
 
   return (
@@ -185,6 +194,14 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto p-6 space-y-8">
+        {/* TEXTO DE INTRODUÇÃO */}
+        <section className="bg-white/5 border border-white/10 p-8 rounded-[2rem] text-center space-y-3">
+          <h2 className="text-2xl font-black italic uppercase tracking-tighter">Agenda Interativa</h2>
+          <p className="text-gray-400 text-sm max-w-lg mx-auto leading-relaxed">
+            Bem-vindo ao nosso espaço! Esta é a agenda oficial do nosso grupo para partilharmos os nossos Instagrams, interesses e fortalecer as nossas afinidades.
+          </p>
+        </section>
+
         <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-orange-500 transition-colors" />
           <input type="text" placeholder="Pesquisar..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-orange-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -246,12 +263,26 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL CONFIGURAÇÃO */}
+      {/* MODAL CONFIGURAÇÃO (ADICIONAR/EDITAR) */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto">
           <div className="bg-[#111] p-8 rounded-[2.5rem] border border-white/10 w-full max-w-md relative my-auto shadow-2xl">
-            <button onClick={() => {setShowAddModal(false); setEditingPart(null);}} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors"><X /></button>
-            <h2 className="font-black italic text-orange-500 mb-6 uppercase text-2xl text-center">Configurar Perfil</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="font-black italic text-orange-500 uppercase text-2xl">{editingPart ? 'Editar Perfil' : 'Novo Perfil'}</h2>
+              <div className="flex gap-2">
+                {editingPart && (
+                  <button 
+                    onClick={handleDelete} 
+                    disabled={isDeleting}
+                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                    title="Excluir Participante"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
+                <button onClick={() => {setShowAddModal(false); setEditingPart(null);}} className="p-2 text-gray-500 hover:text-white transition-colors"><X /></button>
+              </div>
+            </div>
             
             <div className="flex bg-white/5 p-1 rounded-2xl mb-6">
               <button 
@@ -271,13 +302,13 @@ export default function App() {
             </div>
 
             <div className="mb-8 flex flex-col items-center">
-              <div className="w-32 h-32 rounded-[2rem] bg-white/5 border border-white/10 overflow-hidden relative mb-4">
+              <div className="w-32 h-32 rounded-[2rem] bg-white/5 border border-white/10 overflow-hidden relative mb-4 shadow-2xl">
                 <img src={currentFoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=Felix`} className="w-full h-full object-cover" alt="Preview" />
                 {uploading && <div className="absolute inset-0 bg-black/80 flex items-center justify-center"><div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>}
               </div>
 
               {photoType === 'upload' ? (
-                <label className="bg-orange-500 text-black px-6 py-3 rounded-xl font-black uppercase text-[10px] cursor-pointer hover:bg-orange-400 transition-colors">
+                <label className="bg-orange-500 text-black px-6 py-3 rounded-xl font-black uppercase text-[10px] cursor-pointer hover:bg-orange-400 transition-colors shadow-lg shadow-orange-500/20">
                   Escolher do Dispositivo
                   <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                 </label>
@@ -304,7 +335,9 @@ export default function App() {
                 {HOBBIES_LIST.filter(h=>h!=="Todos").map(h => <option key={`opt-${h}`} value={h}>{h}</option>)}
               </select>
               <textarea placeholder="Descrição curta" className="w-full bg-black border border-white/10 p-4 rounded-xl h-20 text-white outline-none focus:border-orange-500 resize-none" value={editingPart ? editingPart.descricao : newPart.descricao} onChange={e => editingPart ? setEditingPart({...editingPart, descricao: e.target.value}) : setNewPart({...newPart, descricao: e.target.value})} />
-              <button disabled={uploading} className="w-full bg-white text-black font-black py-5 rounded-2xl uppercase italic tracking-tighter hover:bg-orange-500 transition-all shadow-xl disabled:opacity-50">Guardar Perfil</button>
+              <button disabled={uploading || isDeleting} className="w-full bg-white text-black font-black py-5 rounded-2xl uppercase italic tracking-tighter hover:bg-orange-500 transition-all shadow-xl disabled:opacity-50">
+                {isDeleting ? 'Excluindo...' : 'Guardar Perfil'}
+              </button>
             </form>
           </div>
         </div>

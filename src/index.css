@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Se o seu terminal ainda reclamar do erro [plugin:vite:css], 
+   use as linhas abaixo em vez da de cima: */
+/*
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+*/
+
+body {
+  margin: 0;
+  background-color: black;
+}
